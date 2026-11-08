@@ -443,13 +443,18 @@ export default function (pi: ExtensionAPI) {
 		const now = Date.now();
 		const missed: TimerRec[] = [];
 		for (const t of [...timers]) {
-			if (t.kind === "on") continue; // re-launched below
+			if (t.kind === "on") {
+				arm(t); // re-launch the watched command
+				continue;
+			}
 			if (t.nextAtMs && t.nextAtMs <= now) {
 				if (t.kind === "every") {
 					t.nextAtMs = now + (t.everyMs ?? MIN_RECUR_MS); // skip cycles missed while closed
 					arm(t);
 				} else if (t.kind === "cron") {
-					const next = cronNext(parseCron(t.cron ?? "") ?? { mins: new Set(), hours: new Set(), doms: null, months: new Set(), dows: null }, now);
+					// empty sets → cronNext month-jumps to its limit and returns null
+					const fallback = { mins: new Set<number>(), hours: new Set<number>(), doms: new Set<number>(), months: new Set<number>(), dows: new Set<number>() };
+					const next = cronNext(parseCron(t.cron ?? "") ?? fallback, now);
 					if (next === null) {
 						missed.push(t);
 						remove(t.id);

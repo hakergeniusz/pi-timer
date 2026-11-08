@@ -194,5 +194,18 @@ check("persisted timer fires after restart", b.sent.some((s) => s.content === "[
 b.handlers.session_shutdown!({}, {});
 check("shutdown clears timers", (await run(b, { action: "list" })).includes("No active timers"));
 
+// `on` watcher survives restart: still pending in A2's file, re-launched by C.
+const never = new Promise<{ stdout: string; stderr: string; code: number; killed: boolean }>(() => {});
+const a2 = fakePi(SESSION, (_c, args) => ((args[1] ?? "") === "hang" ? never : Promise.resolve({ stdout: "x", stderr: "", code: 0, killed: false })));
+activate(a2.pi);
+a2.handlers.session_start!({}, ctxOf(a2));
+await run(a2, { action: "on", command: "hang", message: "waiting for build" });
+const { default: activateC } = await import("./index.ts?restart2");
+const c = fakePi(SESSION, () => Promise.resolve({ stdout: "relaunched output\n", stderr: "", code: 0, killed: false }));
+activateC(c.pi);
+c.handlers.session_start!({}, ctxOf(c));
+await sleep(50);
+check("on watcher re-launched after restart", c.sent.some((s) => s.content.includes("[timer t1] waiting for build") && s.content.includes("relaunched output")), JSON.stringify(c.sent));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
